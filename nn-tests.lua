@@ -2,19 +2,20 @@ torch = require 'torch'
 nn = require 'nn'
 gp = require 'gnuplot'
 
-function build_net1()
-   local l1 = nn.Linear(2,1)
+function build_net(w)
    local net = nn.Sequential()
-   net:add(l1)
+   net:add(nn.Linear(1,w))
+   net:add(nn.Tanh())
+   net:add(nn.Linear(w,1))
    return net
 end
 
 function learn_step(model, func, cr)
   -- random sample
-  local input= torch.rand(2);     -- normally distributed example in 2d
+  local input= torch.randn(1) * 10;     -- normally distributed example in 2d
   local output= torch.Tensor(1);
 
-  output[1] = func(input[1], input[2])
+  output[1] = func(input[1])
 
   -- feed it to the neural network and the criterion
   local o = model:forward(input)
@@ -38,8 +39,25 @@ function disp_train(net, func, len)
       local e = learn_step(net, func, cr)
       errs[i] = e
    end
-   gp.plot("errs", errs, '+')
+--   gp.plot("errs", errs, '+')
 end
 
-n1 = build_net1()
-disp_train(n1, function(x,y) return 3* x - 10*y + 3 end, 2000)
+function f(x)
+   return -math.sin(3*x) + math.cos(2*x + 1)
+end
+
+for w=1,10 do
+   local nt = build_net(w)
+
+   disp_train(nt, f, 20000)
+
+   xx = torch.linspace(-5,5,100)
+   yy1 = xx:clone()
+   yy2 = xx:clone()
+
+   yy1 = yy1:apply(function(x) return nt:forward(torch.Tensor({x}))[1] end)
+   yy2 = yy2:apply(f)
+
+   gp.figure(w)
+   gp.plot({"func", xx,yy1}, {"tgt", xx, yy2})
+end
