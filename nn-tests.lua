@@ -10,54 +10,68 @@ function build_net(w)
    return net
 end
 
-function learn_step(model, func, cr)
-  -- random sample
-  local input= torch.randn(1) * 10;     -- normally distributed example in 2d
-  local output= torch.Tensor(1);
+function batch_learn(model, input, target, cr)
+   local err = 0
+   model:zeroGradParameters()
+   for k=1,input:size(1) do
+      -- feed it to the neural network and the criterion
+      local inp = input:narrow(1,k,1)
+      local tgt = target:narrow(1,k,1)
 
-  output[1] = func(input[1])
+      local out = model:forward(inp)
+      local e = cr:forward(out, tgt)
+      local grad = cr:backward(model.output, tgt)
+      model:backward(inp, grad)
 
-  -- feed it to the neural network and the criterion
-  local o = model:forward(input)
---  cr:forward(o, output)
+      err = err + e
+   end
+   model:updateParameters(0.0001)
 
-  -- train over this example in 3 steps
-  -- (1) zero the accumulation of the gradients
-  model:zeroGradParameters()
-  -- (2) accumulate gradients
-  model:backward(input, cr:backward(model.output, output))
-  -- (3) update parameters with a 0.01 learning rate
-  model:updateParameters(0.01)
-  return (o[1] - output[1])*(o[1] - output[1])
+   return err / input:size(1)
 end
 
-function disp_train(net, func, len)
+function disp_train(net, func, len, disp_every)
    local cr = nn.MSECriterion()
+   local data_points = torch.rand(len) * 10 - 5
+   local tgts = data_points:clone():apply(func)
+
    local errs = torch.Tensor(len)
 
    for i=1,len do
-      local e = learn_step(net, func, cr)
+      local e = batch_learn(net, data_points, tgts, cr)
       errs[i] = e
+      if disp_every and i % disp_every == 0 then
+         gp.figure(i)
+         disp(net, i)
+      end
    end
---   gp.plot("errs", errs, '+')
+   gp.raw("set multiplot layout 2,1")
+   gp.plot("errs", errs, '-')
+   disp(net)
+   gp.raw("unset multiplot")
 end
 
 function f(x)
-   return -math.sin(3*x) + math.cos(2*x + 1)
+   return 0.5 * (math.sin(3 * x) + math.cos(2 * x + 1))
 end
 
-for w=1,10 do
-   local nt = build_net(w)
-
-   disp_train(nt, f, 20000)
-
-   xx = torch.linspace(-5,5,100)
+function disp(net)
+   xx = torch.linspace(-10,10,100)
    yy1 = xx:clone()
    yy2 = xx:clone()
 
-   yy1 = yy1:apply(function(x) return nt:forward(torch.Tensor({x}))[1] end)
+   yy1 = yy1:apply(function(x) return net:forward(torch.Tensor({x}))[1] end)
    yy2 = yy2:apply(f)
 
-   gp.figure(w)
    gp.plot({"func", xx,yy1}, {"tgt", xx, yy2})
 end
+
+
+-- for w=1,10 do
+--    local nt = build_net(w)
+--    gp.figure(w)
+--    disp_train(nt, f, 200)
+-- end
+
+local nt = build_net(10)
+disp_train(nt, f, 10000, 200)
