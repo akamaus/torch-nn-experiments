@@ -2,10 +2,17 @@ torch = require 'torch'
 nn = require 'nn'
 gp = require 'gnuplot'
 
-function build_net(i, w)
+function build_net(i, w, k)
    local net = nn.Sequential()
+
    net:add(nn.Linear(i,w))
    net:add(nn.Tanh())
+
+   for i=2,k do
+      net:add(nn.Linear(w,w))
+      net:add(nn.Tanh())
+   end
+
    net:add(nn.Linear(w,1))
    return net
 end
@@ -45,7 +52,7 @@ end
 
 function f(x,y)
    x = x * 1.5
-   return math.sin(x*x) + math.cos(y)
+   return math.sin(x*x + y*y) + math.cos(x + y)
 end
 
 function disp2d(net,f)
@@ -72,5 +79,6 @@ end
 --    disp_train(nt, f, 200)
 -- end
 
-local net = build_net(2, 12)
+local net = build_net(2, 6, 2)
+--disp2d(net, f)
 disp_train(net, f, 10000, 50)
