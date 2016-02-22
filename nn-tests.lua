@@ -13,7 +13,7 @@ end
 function disp_train(net, func, len, disp_every)
    local dataset = {}
    for i=1, len do
-      local p = torch.rand(1) * 10 - 5
+      local p = torch.rand(1) * 16 - 8
       local t = p:clone():apply(func)
       dataset[i] = {p, t}
    end
@@ -21,20 +21,26 @@ function disp_train(net, func, len, disp_every)
       return len
    end
 
-   local cr = nn.MSECriterion()
    local errs = {}
-
+   local cr = nn.MSECriterion()
    local trainer = nn.StochasticGradient(net, cr)
-   trainer.learning_rate = 0.001
+   trainer.learningRate = 0.01
+   trainer.maxIteration = 10
    trainer.hookIteration = function(s, i, e)
       errs[i] = e
    end
-   trainer:train(dataset)
 
-   gp.raw("set multiplot layout 2,1")
-   gp.plot("errs", torch.Tensor(errs), '-')
-   disp(net)
-   gp.raw("unset multiplot")
+   for i=1,10 do
+      trainer.learningRate = 0.01 / (1 + i /2 )
+      errs = {}
+      trainer:train(dataset)
+
+      gp.figure(i)
+      gp.raw("set multiplot layout 2,1")
+      gp.plot("errs", torch.Tensor(errs), '-')
+      disp(net)
+      gp.raw("unset multiplot")
+   end
 end
 
 function f(x)
