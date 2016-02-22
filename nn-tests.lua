@@ -2,23 +2,23 @@ torch = require 'torch'
 nn = require 'nn'
 gp = require 'gnuplot'
 
-function build_net(w)
+function build_net(i, w)
    local net = nn.Sequential()
-   net:add(nn.Linear(1,w))
+   net:add(nn.Linear(i,w))
    net:add(nn.Tanh())
    net:add(nn.Linear(w,1))
    return net
 end
 
-function disp_train(net, func, len, disp_every)
+function disp_train(net, func, batch, num_epochs)
    local dataset = {}
-   for i=1, len do
-      local p = torch.rand(1) * 16 - 8
-      local t = p:clone():apply(func)
+   for i=1, batch do
+      local p = torch.rand(2) * 4 - 2
+      local t = torch.Tensor({func(p[1],p[2])})
       dataset[i] = {p, t}
    end
    function dataset.size()
-      return len
+      return batch
    end
 
    local errs = {}
@@ -30,32 +30,39 @@ function disp_train(net, func, len, disp_every)
       errs[i] = e
    end
 
-   for i=1,10 do
-      trainer.learningRate = 0.01 / (1 + i /2 )
+   for i=1,num_epochs do
+--      trainer.learningRate = 0.01 / (1 + i /2 )
       errs = {}
       trainer:train(dataset)
 
       gp.figure(i)
       gp.raw("set multiplot layout 2,1")
       gp.plot("errs", torch.Tensor(errs), '-')
-      disp(net)
+      disp2d(net, func)
       gp.raw("unset multiplot")
    end
 end
 
-function f(x)
-   return 0.5 * (math.sin(3 * x) + math.cos(2 * x + 1))
+function f(x,y)
+   x = x * 1.5
+   return math.sin(x*x) + math.cos(y)
 end
 
-function disp(net)
-   xx = torch.linspace(-10,10,100)
-   yy1 = xx:clone()
-   yy2 = xx:clone()
+function disp2d(net,f)
+   local n = 20
+   local h = 2
+   local tgt = torch.Tensor(n,n)
+   local res = torch.Tensor(n,n)
+   for i=1,n do
+      for j=1,n do
+         local x = i / (n / h / 2) - 2
+         local y = j / (n / h / 2) - 2
+         tgt[i][j] = f(x,y)
+         res[i][j] = net:forward(torch.Tensor({x,y}))[1]
+      end
+   end
 
-   yy1 = yy1:apply(function(x) return net:forward(torch.Tensor({x}))[1] end)
-   yy2 = yy2:apply(f)
-
-   gp.plot({"func", xx,yy1}, {"tgt", xx, yy2})
+   gp.splot({"tgt", tgt}, {"net", res})
 end
 
 
@@ -65,5 +72,5 @@ end
 --    disp_train(nt, f, 200)
 -- end
 
-local nt = build_net(10)
-disp_train(nt, f, 10000, 200)
+local net = build_net(2, 12)
+disp_train(net, f, 10000, 50)
