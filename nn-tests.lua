@@ -10,43 +10,29 @@ function build_net(w)
    return net
 end
 
-function batch_learn(model, input, target, cr)
-   local err = 0
-   model:zeroGradParameters()
-   for k=1,input:size(1) do
-      -- feed it to the neural network and the criterion
-      local inp = input:narrow(1,k,1)
-      local tgt = target:narrow(1,k,1)
-
-      local out = model:forward(inp)
-      local e = cr:forward(out, tgt)
-      local grad = cr:backward(model.output, tgt)
-      model:backward(inp, grad)
-
-      err = err + e
-   end
-   model:updateParameters(0.0001)
-
-   return err / input:size(1)
-end
-
 function disp_train(net, func, len, disp_every)
-   local cr = nn.MSECriterion()
-   local data_points = torch.rand(len) * 10 - 5
-   local tgts = data_points:clone():apply(func)
-
-   local errs = torch.Tensor(len)
-
-   for i=1,len do
-      local e = batch_learn(net, data_points, tgts, cr)
-      errs[i] = e
-      if disp_every and i % disp_every == 0 then
-         gp.figure(i)
-         disp(net, i)
-      end
+   local dataset = {}
+   for i=1, len do
+      local p = torch.rand(1) * 10 - 5
+      local t = p:clone():apply(func)
+      dataset[i] = {p, t}
    end
+   function dataset.size()
+      return len
+   end
+
+   local cr = nn.MSECriterion()
+   local errs = {}
+
+   local trainer = nn.StochasticGradient(net, cr)
+   trainer.learning_rate = 0.001
+   trainer.hookIteration = function(s, i, e)
+      errs[i] = e
+   end
+   trainer:train(dataset)
+
    gp.raw("set multiplot layout 2,1")
-   gp.plot("errs", errs, '-')
+   gp.plot("errs", torch.Tensor(errs), '-')
    disp(net)
    gp.raw("unset multiplot")
 end
