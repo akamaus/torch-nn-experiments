@@ -2,83 +2,93 @@ torch = require 'torch'
 nn = require 'nn'
 gp = require 'gnuplot'
 
-function build_net(i, w, k)
+require 'mnist_reader.lua'
+
+function build_net(i, layers)
    local net = nn.Sequential()
 
-   net:add(nn.Linear(i,w))
-   net:add(nn.Tanh())
-
-   for i=2,k do
-      net:add(nn.Linear(w,w))
+   local last = i
+   for _,l_size in pairs(layers) do
+      net:add(nn.Linear(last,l_size))
+--      net:add(nn.Dropout(0.5))
       net:add(nn.Tanh())
+
+      last = l_size
    end
 
-   net:add(nn.Linear(w,1))
+   net:add(nn.Linear(last,10))
    return net
 end
 
-function disp_train(net, func, batch, num_epochs)
+
+function maxi(t)
+   local m = -100
+   local n = -1
+   for i=1,t:size(1) do
+      if t[i] > m then
+         m = t[i]
+         n = i
+      end
+   end
+   return n
+end
+
+function fitness(net, dataset_raw)
+   local N = 0
+   local ok = 0
+   for i,v in pairs(dataset_raw) do
+      local lbl = torch.zeros(10)
+      local res = net:forward(v["image"]:resize(28*28))
+      if maxi(res) - 1 == v["label"] then
+         ok = ok + 1
+      end
+      N = N + 1
+   end
+   return ok / N
+end
+
+function disp_train(net, dataset_raw, num_epochs)
    local dataset = {}
-   for i=1, batch do
-      local p = torch.rand(2) * 4 - 2
-      local t = torch.Tensor({func(p[1],p[2])})
-      dataset[i] = {p, t}
+   local N = 0
+   for i,v in pairs(dataset_raw) do
+      local lbl = torch.zeros(10)
+      lbl[ v["label"] + 1 ] = 1
+      dataset[i] = {v["image"]:resize(28*28), lbl}
+      N = N + 1
    end
    function dataset.size()
-      return batch
+      return N
    end
 
    local errs = {}
    local cr = nn.MSECriterion()
    local trainer = nn.StochasticGradient(net, cr)
    trainer.learningRate = 0.01
-   trainer.maxIteration = 10
+   trainer.maxIteration = 5
    trainer.hookIteration = function(s, i, e)
       errs[i] = e
    end
 
    for i=1,num_epochs do
---      trainer.learningRate = 0.01 / (1 + i /2 )
+      print("epoch: ", i, " train: ", fitness(net, dataset_raw), " validation: ", fitness(net, test_data))
+      if i >= 10 then
+         trainer.learningRate = 0.01 / (1 + (i - 10) * 0.2)
+      end
       errs = {}
       trainer:train(dataset)
 
       gp.figure(i)
-      gp.raw("set multiplot layout 2,1")
-      gp.plot("errs", torch.Tensor(errs), '-')
-      disp2d(net, func)
-      gp.raw("unset multiplot")
+--      gp.raw("set multiplot layout 2,1")
+--      gp.plot("errs", torch.Tensor(errs), '-')
+--      disp2d(net, func)
+--      gp.raw("unset multiplot")
    end
 end
 
-function f(x,y)
-   x = x * 1.5
-   return math.sin(x*x + y*y) + math.cos(x + y)
-end
-
-function disp2d(net,f)
-   local n = 20
-   local h = 2
-   local tgt = torch.Tensor(n,n)
-   local res = torch.Tensor(n,n)
-   for i=1,n do
-      for j=1,n do
-         local x = i / (n / h / 2) - 2
-         local y = j / (n / h / 2) - 2
-         tgt[i][j] = f(x,y)
-         res[i][j] = net:forward(torch.Tensor({x,y}))[1]
-      end
-   end
-
-   gp.splot({"tgt", tgt}, {"net", res})
-end
-
-
--- for w=1,10 do
---    local nt = build_net(w)
---    gp.figure(w)
---    disp_train(nt, f, 200)
--- end
-
-local net = build_net(2, 6, 2)
+net = build_net(28*28, {50, 25})
 --disp2d(net, f)
-disp_train(net, f, 10000, 50)
+train_data = read_mnist("train")
+test_data = read_mnist("t10k")
+
+
+disp_train(net, train_data, 100)
